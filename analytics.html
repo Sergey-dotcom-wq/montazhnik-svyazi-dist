@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ИИ-аналитик — Монтажник</title>
+<style>
+  :root{ --bg:#0f172a; --panel:#1e293b; --panel2:#273449; --border:#334155;
+    --text:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; --accent2:#0ea5e9;
+    --green:#22c55e; --red:#ef4444; --amber:#f59e0b; }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding:0 0 40px}
+  header{display:flex;align-items:center;gap:8px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--border)}
+  header h1{font-size:18px;margin-right:auto}
+  .sub{color:var(--muted);font-size:12px}
+  .wrap{max-width:960px;margin:0 auto;padding:20px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:20px}
+  .stat{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:14px}
+  .stat b{display:block;font-size:26px;color:var(--accent);line-height:1.1}
+  .stat span{color:var(--muted);font-size:12px}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:16px}
+  .panel h2{font-size:15px;margin-bottom:10px;color:var(--accent)}
+  textarea{width:100%;background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:14px;font-family:inherit;min-height:70px;resize:vertical}
+  button{background:var(--accent2);color:#fff;border:0;padding:10px 18px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer;margin-top:10px}
+  button:hover{opacity:.9}
+  button:disabled{opacity:.5;cursor:not-allowed}
+  #reply{white-space:pre-wrap;line-height:1.6;font-size:14px}
+  .hint{color:var(--muted);font-size:12px;margin-top:8px}
+  .status{font-size:12px;margin-top:8px}
+  .status.ok{color:var(--green)}
+  .status.err{color:var(--red)}
+</style>
+</head>
+<body>
+<header>
+  <h1>ИИ-аналитик · Монтажник Связи</h1>
+  <span class="sub">данные из БД · GigaChat</span>
+</header>
+<div class="wrap">
+  <div class="stats" id="stats">
+    <div class="stat"><b>—</b><span>Наборы (всего)</span></div>
+    <div class="stat"><b>—</b><span>Открыто</span></div>
+    <div class="stat"><b>—</b><span>Пользователи</span></div>
+    <div class="stat"><b>—</b><span>Смены</span></div>
+    <div class="stat"><b>—</b><span>Топливо</span></div>
+    <div class="stat"><b>—</b><span>Алерты</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>Задать вопрос аналитику</h2>
+    <textarea id="q" placeholder="Например: сколько нарядов открыто? какая динамика топлива?"></textarea>
+    <button id="btn">Спросить</button>
+    <div class="status" id="status"></div>
+    <div class="hint">Ответ формируется из реальных агрегатов БД; при подключении GigaChat — расширенный разбор.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Ответ</h2>
+    <div id="reply">Нажмите «Спросить» — получите сводку.</div>
+  </div>
+</div>
+
+<script>
+const API = "/api/v1/ai/analytics";
+
+async function refresh() {
+  const st = document.getElementById("stats").children;
+  for (const c of st) c.querySelector("b").textContent = "…";
+  try {
+    const resp = await fetch(API, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({question: "дай сводку по системам"})
+    });
+    const data = await resp.json();
+    const d = data.digest || {};
+    const nd = ["total_jobs","open_jobs","active_users","work_shifts","fuel_records","critical_alerts"];
+    nd.forEach((k,i)=>{ if(st[i]) st[i].querySelector("b").textContent = d[k]===undefined?"—":d[k]; });
+    if (data.reply) document.getElementById("reply").textContent = data.reply;
+  } catch(e) {
+    const st = document.getElementById("stats").children;
+    for (const c of st) c.querySelector("b").textContent = "ошибка";
+    document.getElementById("reply").textContent = "Не удалось получить данные: " + e.message;
+  }
+}
+
+document.getElementById("btn").addEventListener("click", async () => {
+  const q = document.getElementById("q").value.trim();
+  const btn = document.getElementById("btn");
+  const st = document.getElementById("status");
+  btn.disabled = true;
+  st.textContent = "Запрос…";
+  st.className = "status";
+  try {
+    const resp = await fetch(API, {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({question: q || "дай сводку"})
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    document.getElementById("reply").textContent = data.reply || "(пусто)";
+    st.textContent = "OK";
+    st.className = "status ok";
+    const d = data.digest || {};
+    const nd = ["total_jobs","open_jobs","active_users","work_shifts","fuel_records","critical_alerts"];
+    const ch = document.getElementById("stats").children;
+    nd.forEach((k,i)=>{ if(ch[i]) ch[i].querySelector("b").textContent = d[k]===undefined?"—":d[k]; });
+  } catch(e) {
+    st.textContent = "Ошибка: " + e.message;
+    st.className = "status err";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+refresh();
+</script>
+</body>
+</html>
